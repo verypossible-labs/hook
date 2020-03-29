@@ -5,8 +5,8 @@ A runtime resolution library.
 Dynamic, ancestor-walking, fallback following, group isolated, runtime term resolution that can be
 compiled out for zero performance cost where desired.
 
-For further context check [Hook](https://hexdocs.pm/hook)'s public interface and the
-[Examples](docs/examples.md) documentation.
+For further context check [Hook](https://hexdocs.pm/hook/Hook.html)'s public interface and the
+[Examples](https://hexdocs.pm/hook/examples.html#content) documentation.
 
 ## Motivation
 
