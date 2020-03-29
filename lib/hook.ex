@@ -14,11 +14,17 @@ defmodule Hook do
   Starting with the calling process:
 
   1. does the process define a mapping for the term
-    1.1. the term has been resolved
+
+      1.1. the term has been resolved
+
   2. does the process define fallbacks
-    2.1. for each fallback in order: goto step 1
+
+      2.1. for each fallback in order: goto step 1
+
   3. does the process have ancestors
-    3.1. for each ancestor in order: goto step 1
+
+      3.1. for each ancestor in order: goto step 1
+
   4. the term has not been resolved
 
   # Performance
@@ -96,22 +102,20 @@ defmodule Hook do
   ```
 
   `:should_hook` will be called with a single argument that is a term being processed by the
-  `hook/1` macro and must return a boolean().
+  `hook/1` macro and must return a boolean(). This evaluation will happen at compile time.
   """
   defmacro hook(term) do
-    case Application.fetch_env(:hook, :init) do
+    case Application.fetch_env(:hook, :should_hook) do
       {module, function_name} ->
-        opts = apply(module, function_name, [term])
-
-        case Keyword.get(opts, :compile_out) do
+        case apply(module, function_name, [term]) do
           true ->
             quote do
-              unquote(term)
+              Hook.fetch!(unquote(term))
             end
 
           _ ->
             quote do
-              Hook.fetch!(unquote(term))
+              unquote(term)
             end
         end
 
