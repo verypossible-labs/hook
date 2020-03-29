@@ -24,11 +24,11 @@ defmodule ChannelTest do
   test "submitted events are published as single message" do
     payload_1 = "1"
     payload_2 = "2"
-    payload = Enum.join([payload_1, payload_2]
+    joint_payload = "12"
     # 3: define a callback
-    Hook.callback(Mqtt, :publish, fn ^payload -> :ok end)
-    :ok = Channel.submit(event_1)
-    :ok = Channel.submit(event_2)
+    Hook.callback(Mqtt, :publish, fn ^joint_payload -> :ok end)
+    :ok = Channel.submit(payload_1)
+    :ok = Channel.submit(payload_2)
     :ok = Channel.flush()
     # 4: check for unresolved callbacks
     Hook.assert()
@@ -42,7 +42,6 @@ Omitting #3 above would cause:
 
 ```elixir
 ** (RuntimeError) Hook: failed to resolve a mapping for Mqtt
-   (hook 0.1.0) lib/hook/server.ex:210: Hook.Server.raise_no_mapping_found/1
 ```
 
 This is because the hook created at #2 does not `Mqtt` to another value, rather, it only allows
@@ -54,8 +53,6 @@ Altering #3 so that the function name `:publish` was something else, say `:publi
 
 ```elixir
 ** (RuntimeError) Hook: failed to resolve a Mqtt.publish/1 callback for #PID<0.225.0>
-   (hook 0.1.0) lib/hook/callbacks.ex:111: Hook.Callbacks.raise_no_callback_found/4
-   (hook 0.1.0) lib/hook/server.ex:142: Hook.Server.handle_call/3
 ```
 
 We no longer get the previous exception because a mapping does exist for Mqtt, we did define a
