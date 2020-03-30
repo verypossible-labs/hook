@@ -15,7 +15,7 @@ defmodule Hook.MixProject do
       description: description(),
       dialyzer: dialyzer(),
       docs: [main: "hook", extras: ["docs/examples.md"]],
-      elixir: "~> 1.10",
+      elixir: "~> 1.9",
       package: package(),
       preferred_cli_env: [check: :test],
       start_permanent: Mix.env() == :prod,
