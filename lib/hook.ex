@@ -71,7 +71,6 @@ defmodule Hook do
 
   This means that a "hot path" that is resolving a term via these functions should remain
   performant outside of extreme cases.
-  ``
   """
 
   alias Hook.Server
