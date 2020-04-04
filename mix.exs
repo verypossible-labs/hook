@@ -14,7 +14,7 @@ defmodule Hook.MixProject do
       deps: deps(),
       description: description(),
       dialyzer: dialyzer(),
-      docs: [main: "hook", extras: ["docs/examples.md"]],
+      docs: [main: "Hook", extras: ["docs/examples.md"]],
       elixir: "~> 1.9",
       package: package(),
       preferred_cli_env: [check: :test],
