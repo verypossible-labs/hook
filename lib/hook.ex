@@ -2,6 +2,21 @@ defmodule Hook do
   @moduledoc """
   An interface to define and leverage runtime resolution.
 
+  # Init configuration
+
+  Optional configuration.
+
+  ```
+  config :hook,
+    should_hook: {SomeModule, :some_function}
+  ```
+
+  - `:should_hook` - Whether the `hook/1` macro should compile into a fetch call or directly into
+    its own parameter.
+  - `boolean()` - control all hooks with a single flag.
+  - `{module(), function_name :: atom()}` - for each hooked term call `function_name` on `module`
+    passing the term itself.
+
   # Groups
 
   Mappings are defined under `t:group/0`s. Hook defaults the group to be the calling process
@@ -21,9 +36,13 @@ defmodule Hook do
 
       2.1. for each fallback in order: goto step 1
 
-  3. does the process have ancestors
+  3. does the process have :"$ancestors"
 
       3.1. for each ancestor in order: goto step 1
+
+  3. does the process have :"$callers"
+
+      3.1. for each caller in order: goto step 1
 
   4. the term has not been resolved
 
@@ -46,6 +65,7 @@ defmodule Hook do
   - `callbacks/0,1`
   - `fetch!/1,2`
   - `fetch/1,2`
+  - `get/1,2,3`
   - `get_all/0,1`
   - `hook/1`
 
@@ -56,32 +76,22 @@ defmodule Hook do
 
   alias Hook.Server
 
+  @type config() :: %{hook?: boolean() | (any() -> boolean())}
   @type count() :: pos_integer() | :infinity
-
   @type group() :: pid() | atom()
-
   @type callback_opt() :: {:group, group()} | {:count, count()}
-
   @type callback_opts() :: [callback_opt()]
-
   @type fun_key() :: {function_name :: atom(), arity :: non_neg_integer()}
 
   @callback assert(group()) :: :ok
-
   @callback callback(module(), function_name :: atom(), fun(), callback_opts()) :: :ok
-
   @callback callbacks(group()) :: %{resolved: [], unresolved: [{count(), pid(), function()}]}
-
   @callback fallback(dest :: group(), src :: group()) :: :ok
-
   @callback fetch(key :: any(), group()) :: {:ok, any()} | :error
-
   @callback fetch!(any(), group()) :: any()
-
+  @callback get(key :: any(), default :: any(), group()) :: {:ok, any()} | :error
   @callback get_all(group()) :: {:ok, %{}} | :error
-
-  @callback put(from :: module(), to :: module(), group()) :: :ok
-
+  @callback put(key :: any(), value :: any(), group()) :: :ok
   @callback resolve_callback(module(), fun_key(), args :: [any()]) :: any()
 
   defmacro __using__(_opts) do
@@ -93,24 +103,15 @@ defmodule Hook do
   @doc """
   A macro that compiles into `term` itself or a `Hook.fetch(term)` call.
 
-  By default the fetch call will only be used when the Mix environment is not `:prod`. This logic
-  can be overidden by the `:should_hook` configuration:
-
-  ```
-  config :hook,
-    should_hook: {SomeModule, :some_function}
-  ```
-
-  `:should_hook` will be called with a single argument that is a term being processed by the
-  `hook/1` macro and must return a boolean(). This evaluation will happen at compile time.
+  Check the "Init configuration" section for information about configuring this functionality.
   """
   defmacro hook(term) do
     case Application.fetch_env(:hook, :should_hook) do
-      {module, function_name} ->
+      {:ok, {module, function_name}} ->
         case apply(module, function_name, [term]) do
           true ->
             quote do
-              Hook.fetch!(unquote(term))
+              Hook.get(unquote(term), unquote(term))
             end
 
           _ ->
@@ -128,23 +129,36 @@ defmodule Hook do
 
           _ ->
             quote do
-              Hook.fetch!(unquote(term))
+              Hook.get(unquote(term), unquote(term))
             end
         end
     end
   end
 
   @doc """
-  Asserts that all non-infinity callbacks defined via `Hook.callback/4` have been consumed.
+  Asserts that all callbacks defined via `Hook.callback/4` have been satisfied.
 
-  Returns `:ok` or raises.
+  Returns `:ok` if the assertion holds, raises otherwise.
+
+  Infinity-callbacks and 0-callbacks are inherently satisfied.
   """
   defdelegate assert(group \\ self()), to: Server
 
   @doc """
-  Defines a callback that can be consumed `count` times.
+  Defines a callback that can be consumed and asserted on.
 
-  Ensures a module value is put under the key `module` for the calling process.
+  **Note:** `module` will be defined under the calling process.
+
+  This function will raise when the specified callback is not a public function on `module`.
+
+  # Options
+
+  `:count` - How many times the callback can be consumed.
+    - `:infinity` - The callback can be consumed an infinite number of times. For a module,
+      function, and arity, only a single infinity-callback will be defined at once, last write
+      wins. Infinity-callbacks are always consumed after non-infinity-callbacks.
+    - `0` - The callback should never be consumed. Raises an error if it is. The callback is
+      removed upon raising.
   """
   defdelegate callback(module, function_name, function, opts \\ []), to: Server
 
@@ -157,6 +171,11 @@ defmodule Hook do
   Prepend `group` to the calling process' fallbacks.
   """
   defdelegate fallback(src_group \\ self(), dest_group), to: Server
+
+  @doc """
+  Gets the value for `key` for `group` returning `default` if it is not defined.
+  """
+  defdelegate get(key, default \\ nil, group \\ self()), to: Server
 
   @doc """
   Gets all values for `group`.
