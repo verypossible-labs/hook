@@ -84,11 +84,7 @@ defmodule HookTest do
     assert {:ok, %{key_2: :value_2}} == Hook.get_all(context.test)
   end
 
-  describe "assert/0 and callback/4" do
-    test "no callbacks" do
-      assert :ok = Hook.assert()
-    end
-
+  describe "assert/0" do
     test "unresolved callback causes an error" do
       Hook.callback(DateTime, :utc_now, fn -> ~U[2015-01-13 13:00:07Z] end)
       assert %RuntimeError{message: message} = catch_error(Hook.assert())
@@ -101,15 +97,9 @@ defmodule HookTest do
       Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
       assert :ok = Hook.assert()
     end
+  end
 
-    test "resolving an undefined callback causes an error" do
-      assert %RuntimeError{message: message} =
-               catch_error(Hook.resolve_callback(DateTime, {:utc_now, 0}, []))
-
-      assert message =~
-               "Hook: failed to resolve a DateTime.utc_now/0 callback for #{inspect(self())}"
-    end
-
+  describe "callback/4" do
     test "multiple separate callbacks for the same function" do
       Hook.callback(DateTime, :utc_now, fn -> ~U[2015-01-13 13:00:07Z] end)
       Hook.callback(DateTime, :utc_now, fn -> ~U[2015-01-13 13:00:07Z] end)
@@ -118,27 +108,36 @@ defmodule HookTest do
       assert :ok = Hook.assert()
     end
 
+    test "count: 0, happy path" do
+      Hook.callback(DateTime, :utc_now, fn -> ~U[2015-01-13 13:00:07Z] end, count: 0)
+      assert :ok = Hook.assert()
+    end
+
+    test "count: 0, violated assertion" do
+      Hook.callback(DateTime, :utc_now, fn -> ~U[2015-01-13 13:00:07Z] end, count: 0)
+
+      assert %RuntimeError{message: message} =
+               catch_error(elem(Hook.fetch(DateTime), 1).utc_now())
+
+      assert message =~
+               "Hook: attempted to resolve refuted callback DateTime.utc_now/0 for #PID<"
+    end
+
     test "count: 2" do
       Hook.callback(DateTime, :utc_now, fn -> ~U[2015-01-13 13:00:07Z] end, count: 2)
       Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
       Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
       assert :ok = Hook.assert()
     end
-  end
 
-  describe "infinity-callbacks" do
-    test "count: :infinity" do
+    test "infinity-callback: multiple resolutions" do
       Hook.callback(DateTime, :utc_now, fn -> ~U[2015-01-13 13:00:07Z] end, count: :infinity)
       Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
       Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
       assert :ok = Hook.assert()
     end
 
-    test "go behind non-infinity callbacks" do
-      Hook.callback(DateTime, :utc_now, fn -> 1 end)
-      Hook.callback(DateTime, :utc_now, fn -> 2 end)
-      assert 1 = Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
-      assert 2 = Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
+    test "infinity-callback: go behind non-infinity callbacks" do
       Hook.callback(DateTime, :utc_now, fn -> 2 end, count: :infinity)
       Hook.callback(DateTime, :utc_now, fn -> 1 end)
       assert 1 = Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
@@ -147,6 +146,30 @@ defmodule HookTest do
       Hook.callback(DateTime, :utc_now, fn -> 3 end, count: :infinity)
       assert 3 = Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
       assert 3 = Hook.resolve_callback(DateTime, {:utc_now, 0}, [])
+    end
+
+    test "infinity-callback: only one at a time, last write wins" do
+      Hook.callback(DateTime, :utc_now, fn -> 1 end, count: :infinity)
+      Hook.callback(DateTime, :utc_now, fn -> 2 end, count: :infinity)
+      assert %{unresolved: [{:infinity, DateTime, {:utc_now, 0}}]} = Hook.callbacks()
+    end
+
+    test "defining a callback for a function that is not a public function on the module fails" do
+      assert %RuntimeError{message: message} =
+               catch_error(Hook.callback(DateTime, :utc_now2, fn -> ~U[2015-01-13 13:00:07Z] end))
+
+      assert message =~
+               "Hook: failed to define a DateTime.utc_now2/0 callback because that is not a public function on that module"
+    end
+  end
+
+  describe "resolve_callback/3" do
+    test "resolving an undefined callback causes an error" do
+      assert %RuntimeError{message: message} =
+               catch_error(Hook.resolve_callback(DateTime, {:utc_now, 0}, []))
+
+      assert message =~
+               "Hook: failed to resolve a DateTime.utc_now/0 callback for #{inspect(self())}"
     end
   end
 end

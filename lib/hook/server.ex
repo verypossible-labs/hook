@@ -26,10 +26,13 @@ defmodule Hook.Server do
 
       {:error, []} ->
         group
-        |> get_ancestors()
+        |> get_dictionary_pids()
         |> case do
-          {:ok, ancestors} -> __fetch__(ancestors, match_fun)
-          :error -> :error
+          {:ok, ancestors} ->
+            __fetch__(ancestors, match_fun)
+
+          :error ->
+            :error
         end
 
       {:error, groups} ->
@@ -46,13 +49,20 @@ defmodule Hook.Server do
   end
 
   @impl Hook
-  def callback(module, function_name, function, opts) do
+  def callback(module, function_name, function, opts)
+      when is_atom(module) and is_atom(function_name) and is_function(function) and is_list(opts) do
     opts =
       opts
       |> Keyword.put_new(:count, 1)
       |> Keyword.put_new(:group, self())
 
-    GenServer.call(__MODULE__, {:callback, module, function_name, function, opts})
+    case GenServer.call(__MODULE__, {:callback, module, function_name, function, opts}) do
+      :ok ->
+        :ok
+
+      {:error, {:not_public_function, module, fun_key}} ->
+        Callbacks.raise_not_public_function(module, fun_key)
+    end
   end
 
   @impl Hook
@@ -83,12 +93,24 @@ defmodule Hook.Server do
   end
 
   @impl Hook
+  def get(key, default, group) do
+    __fetch__(group, fn
+      %{mappings: %{^key => value}} -> {:ok, value}
+      _ -> :error
+    end)
+    |> case do
+      {:ok, value} -> value
+      :error -> default
+    end
+  end
+
+  @impl Hook
   def get_all(group), do: __fetch__(group, fn %{mappings: ret} -> {:ok, ret} end)
 
   @impl GenServer
   def handle_call({:callback, module, function_name, function, opts}, _, state) do
-    :ok = Callbacks.define(module, function_name, function, opts)
-    {:reply, :ok, state}
+    ret = Callbacks.define(module, function_name, function, opts)
+    {:reply, ret, state}
   end
 
   def handle_call(:delete, _, state) do
@@ -103,24 +125,27 @@ defmodule Hook.Server do
     {:reply, :ok, state}
   end
 
-  def handle_call({:resolve_callback, module, fun_key, args}, {caller, _}, state) do
+  def handle_call({:resolve_callback, module, fun_key}, {caller, _}, state) do
     __fetch__(caller, fn
       %{mappings: %{callbacks: %{^module => %{^fun_key => %{unresolved: [_ | _]}}}}} = group_state ->
         {:ok, group_state}
 
-      _ ->
+      _ret ->
         :error
     end)
     |> case do
       {:ok, group_state} ->
-        case Callbacks.resolve(group_state, module, fun_key, args, caller) do
-          {ret, group_state} ->
+        case Callbacks.resolve(group_state, module, fun_key, caller) do
+          {{:ok, cb}, group_state} ->
             :ets.insert(Hook, {group_state.group, group_state})
-            {:reply, {:ok, ret}, state}
+            {:reply, {:ok, cb}, state}
+
+          {{:error, :refute} = ret, _group_state} ->
+            {:reply, ret, state}
         end
 
-      _ ->
-        {:reply, :error, state}
+      _ret ->
+        {:reply, {:error, :not_found}, state}
     end
   end
 
@@ -142,13 +167,17 @@ defmodule Hook.Server do
 
   @impl Hook
   def resolve_callback(module, {_, _} = fun_key, args) do
-    case GenServer.call(__MODULE__, {:resolve_callback, module, fun_key, args}) do
-      {:ok, ret} ->
-        ret
+    case GenServer.call(__MODULE__, {:resolve_callback, module, fun_key}) do
+      {:ok, cb} ->
+        apply(cb, args)
 
-      :error ->
+      {:error, :not_found} ->
         {function_name, arity} = fun_key
-        Callbacks.raise_no_callback_found(module, function_name, arity, self())
+        Callbacks.raise_no_callback_found(module, {function_name, arity}, self())
+
+      {:error, :refute} ->
+        {function_name, arity} = fun_key
+        Callbacks.raise_callback_refuted(module, {function_name, arity}, self())
     end
   end
 
@@ -193,7 +222,7 @@ defmodule Hook.Server do
     end
   end
 
-  defp get_ancestors(pid) when is_pid(pid) do
+  defp get_dictionary_pids(pid) when is_pid(pid) do
     pid
     |> Process.info(:dictionary)
     |> case do
@@ -201,16 +230,18 @@ defmodule Hook.Server do
         :error
 
       {_, dictionary} ->
-        dictionary
-        |> Keyword.get(:"$ancestors")
+        ancestors = Keyword.get(dictionary, :"$ancestors", [])
+        callers = Keyword.get(dictionary, :"$callers", [])
+
+        (ancestors ++ callers)
         |> case do
-          [_ | _] = ancestors -> {:ok, ancestors}
+          [_ | _] = pids -> {:ok, pids}
           _ -> :error
         end
     end
   end
 
-  defp get_ancestors(_), do: :error
+  defp get_dictionary_pids(_), do: :error
 
   defp term_map(group) do
     %{fallbacks: [], group: group, mappings: %{}}

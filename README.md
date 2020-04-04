@@ -1,12 +1,13 @@
 # Hook
 
-A runtime resolution library.
+A term resolution library.
 
 Dynamic, ancestor-walking, fallback following, group isolated, runtime term resolution that can be
 compiled out for zero performance cost where desired.
 
-For further context check [Hook](https://hexdocs.pm/hook/Hook.html)'s public interface and the
-[Examples](https://hexdocs.pm/hook/examples.html#content) documentation.
+To understand what Hook does check the [Examples](https://hexdocs.pm/hook/examples.html#content)
+documentation. For reference and further understanding check
+[Hook](https://hexdocs.pm/hook/Hook.html)'s documentation.
 
 ## Motivation
 
@@ -23,7 +24,8 @@ else.
 
 From Mox:
 
-- Behaviours are not required.
+- Behaviours are not required to enforce that defined callbacks match public functions on
+  indicated modules.
 - Runtime resolution framework included.
 
 From Pact:
