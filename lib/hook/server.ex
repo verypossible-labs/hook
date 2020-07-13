@@ -119,9 +119,12 @@ defmodule Hook.Server do
   end
 
   def handle_call({:put, key, value, group}, _, state) do
-    {:ok, group_state} = __fetch__(group)
-    group_state = put_in(group_state, [:mappings, key], value)
-    :ets.insert(Hook, {group, group_state})
+    do_put(key, value, group)
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:put_all, kvps, default_group}, _, state) do
+    do_put_all(kvps, default_group)
     {:reply, :ok, state}
   end
 
@@ -155,9 +158,15 @@ defmodule Hook.Server do
   end
 
   @impl GenServer
-  def init([]) do
+  def init(opts) do
     Hook = :ets.new(Hook, [:named_table, :protected])
+    do_put_all(Keyword.get(opts, :mappings, []), Keyword.fetch!(opts, :parent))
     {:ok, %{}}
+  end
+
+  @impl Hook
+  def put_all(kvps, default_group \\ self()) do
+    GenServer.call(__MODULE__, {:put_all, kvps, default_group})
   end
 
   @impl Hook
@@ -183,10 +192,15 @@ defmodule Hook.Server do
 
   @doc """
   Start a GenServer.
+
+  ## Options
+
+  - `mappings`. `t:Hook.mappings()`. A list of mappings to define on initialization.
   """
-  @spec start_link([]) :: GenServer.on_start()
-  def start_link([]) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  @spec start_link(mappings: Hook.mappings()) :: GenServer.on_start()
+  def start_link(opts) do
+    opts = Keyword.put(opts, :parent, self())
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   defp do_fallback({src, dest}) do
@@ -220,6 +234,19 @@ defmodule Hook.Server do
             {:error, fallbacks ++ groups}
         end
     end
+  end
+
+  defp do_put(key, value, group) do
+    {:ok, group_state} = __fetch__(group)
+    group_state = put_in(group_state, [:mappings, key], value)
+    :ets.insert(Hook, {group, group_state})
+  end
+
+  defp do_put_all(kvps, default_group) do
+    Enum.each(kvps, fn
+      {key, value} -> do_put(key, value, default_group)
+      {key, value, group} -> do_put(key, value, group)
+    end)
   end
 
   defp get_dictionary_pids(pid) when is_pid(pid) do
