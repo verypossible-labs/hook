@@ -75,22 +75,27 @@ defmodule Hook do
 
   alias Hook.Server
 
-  @type config() :: %{hook?: boolean() | (any() -> boolean())}
-  @type count() :: pos_integer() | :infinity
-  @type group() :: pid() | atom()
   @type callback_opt() :: {:group, group()} | {:count, count()}
   @type callback_opts() :: [callback_opt()]
+  @type config() :: %{hook?: boolean() | (any() -> boolean())}
+  @type count() :: pos_integer() | :infinity
   @type fun_key() :: {function_name :: atom(), arity :: non_neg_integer()}
+  @type group() :: pid() | atom()
+  @type key() :: any()
+  @type mappings() :: [{key(), value()} | {key(), value(), group()}]
+  @type value() :: any()
 
   @callback assert(group()) :: :ok
   @callback callback(module(), function_name :: atom(), fun(), callback_opts()) :: :ok
   @callback callbacks(group()) :: %{resolved: [], unresolved: [{count(), pid(), function()}]}
   @callback fallback(dest :: group(), src :: group()) :: :ok
-  @callback fetch(key :: any(), group()) :: {:ok, any()} | :error
   @callback fetch!(any(), group()) :: any()
-  @callback get(key :: any(), default :: any(), group()) :: {:ok, any()} | :error
+  @callback fetch(key(), group()) :: {:ok, any()} | :error
+  @callback get(key(), default :: any(), group()) :: {:ok, any()} | :error
   @callback get_all(group()) :: {:ok, %{}} | :error
-  @callback put(key :: any(), value :: any(), group()) :: :ok
+  @callback put(key(), value(), group()) :: :ok
+  @callback put_all(mappings()) :: :ok
+  @callback put_all(mappings(), group()) :: :ok
   @callback resolve_callback(module(), fun_key(), args :: [any()]) :: any()
 
   defmacro __using__(_opts) do
@@ -185,6 +190,11 @@ defmodule Hook do
   Puts `value` under `key` for `group`.
   """
   defdelegate put(key, value, group \\ self()), to: Server
+
+  @doc """
+  Puts all key value pairs under `group`.
+  """
+  defdelegate put_all(kvps, group \\ self()), to: Server
 
   @doc """
   Fetches the value for `key` for `group`.
