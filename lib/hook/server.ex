@@ -160,7 +160,8 @@ defmodule Hook.Server do
   @impl GenServer
   def init(opts) do
     Hook = :ets.new(Hook, [:named_table, :protected])
-    do_put_all(Keyword.get(opts, :mappings, []), Keyword.fetch!(opts, :parent))
+    mappings = Keyword.get(opts, :mappings, [])
+    do_put_all(mappings, Keyword.fetch!(opts, :parent))
     {:ok, %{}}
   end
 
