@@ -8,10 +8,10 @@ defmodule Hook do
 
   ```
   config :hook,
-    should_hook: {SomeModule, :some_function}
+    hook_strategy_callback: {SomeModule, :some_function}
   ```
 
-  - `:should_hook` - Whether the `hook/1` macro should compile into a fetch call or directly into
+  - `:hook_strategy_callback` - Whether the `hook/1` macro should compile into a fetch call or directly into
     its own parameter.
   - `boolean()` - control all hooks with a single flag.
   - `{module(), function_name :: atom()}` - for each hooked term call `function_name` on `module`
@@ -110,17 +110,36 @@ defmodule Hook do
   Check the "Init configuration" section for information about configuring this functionality.
   """
   defmacro hook(term) do
-    case Application.fetch_env(:hook, :should_hook) do
+    case Application.fetch_env(:hook, :strategy_callback) do
       {:ok, {module, function_name}} ->
+        :ok
+
         case apply(module, function_name, [term]) do
-          true ->
+          :runtime ->
             quote do
               Hook.get(unquote(term), unquote(term))
             end
 
-          _ ->
+          :compile_time ->
             quote do
               unquote(term)
+            end
+
+          {:compile_time, mappings} ->
+            expanded = Macro.expand(term, __CALLER__)
+
+            if not Macro.quoted_literal?(expanded) do
+              raise("When the hook strategy is :compile_time, hooked terms must be literals.")
+            end
+
+            value =
+              case List.keyfind(mappings, expanded, 0) do
+                mapping when tuple_size(mapping) >= 2 -> elem(mapping, 1)
+                _ -> expanded
+              end
+
+            quote do
+              unquote(value)
             end
         end
 
