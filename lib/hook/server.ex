@@ -56,7 +56,13 @@ defmodule Hook.Server do
       |> Keyword.put_new(:count, 1)
       |> Keyword.put_new(:group, self())
 
-    case GenServer.call(__MODULE__, {:callback, module, function_name, function, opts}) do
+    server = GenServer.whereis(__MODULE__)
+
+    if is_nil(server) do
+      raise("A Hook.Server process could not be found, make sure you are starting one.")
+    end
+
+    case GenServer.call(server, {:callback, module, function_name, function, opts}) do
       :ok ->
         :ok
 
