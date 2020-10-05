@@ -110,50 +110,41 @@ defmodule Hook do
   Check the "Init configuration" section for information about configuring this functionality.
   """
   defmacro hook(term) do
-    case Application.fetch_env(:hook, :strategy_callback) do
-      {:ok, {module, function_name}} ->
-        :ok
+    with {:ok, {module, function_name}} <- Application.fetch_env(:hook, :strategy_callback),
+         true <- Code.ensure_loaded?(module),
+         true <- function_exported?(module, function_name, 1) do
+      case apply(module, function_name, [term]) do
+        :runtime ->
+          quote do
+            Hook.get(unquote(term), unquote(term))
+          end
 
-        case apply(module, function_name, [term]) do
-          :runtime ->
-            quote do
-              Hook.get(unquote(term), unquote(term))
+        :compile_time ->
+          quote do
+            unquote(term)
+          end
+
+        {:compile_time, mappings} ->
+          expanded = Macro.expand(term, __CALLER__)
+
+          if not Macro.quoted_literal?(expanded) do
+            raise("When the hook strategy is :compile_time, hooked terms must be literals.")
+          end
+
+          value =
+            case List.keyfind(mappings, expanded, 0) do
+              mapping when tuple_size(mapping) >= 2 -> elem(mapping, 1)
+              _ -> expanded
             end
 
-          :compile_time ->
-            quote do
-              unquote(term)
-            end
-
-          {:compile_time, mappings} ->
-            expanded = Macro.expand(term, __CALLER__)
-
-            if not Macro.quoted_literal?(expanded) do
-              raise("When the hook strategy is :compile_time, hooked terms must be literals.")
-            end
-
-            value =
-              case List.keyfind(mappings, expanded, 0) do
-                mapping when tuple_size(mapping) >= 2 -> elem(mapping, 1)
-                _ -> expanded
-              end
-
-            quote do
-              unquote(value)
-            end
-        end
-
+          quote do
+            unquote(value)
+          end
+      end
+    else
       _ ->
-        case Mix.env() do
-          :prod ->
-            quote do
-              unquote(term)
-            end
-
-          _ ->
-            quote do
-              Hook.get(unquote(term), unquote(term))
-            end
+        quote do
+          unquote(term)
         end
     end
   end
