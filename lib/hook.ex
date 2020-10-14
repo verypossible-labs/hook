@@ -2,20 +2,15 @@ defmodule Hook do
   @moduledoc """
   An interface to define and leverage runtime resolution.
 
-  # Init configuration
-
-  Optional configuration.
+  # Compile-time Configuration
 
   ```
   config :hook,
-    hook_strategy_callback: {SomeModule, :some_function}
+    resolve_at: :compile_time,
+    mappings: [{key, value}],
+    mix_env_allowlist: [:dev, :test],
+    top_level_module_allowlist: [SomeModule]
   ```
-
-  - `:hook_strategy_callback` - Whether the `hook/1` macro should compile into a fetch call or directly into
-    its own parameter.
-  - `boolean()` - control all hooks with a single flag.
-  - `{module(), function_name :: atom()}` - for each hooked term call `function_name` on `module`
-    passing the term itself.
 
   # Groups
 
@@ -110,39 +105,48 @@ defmodule Hook do
   Check the "Init configuration" section for information about configuring this functionality.
   """
   defmacro hook(term) do
-    with {:ok, {module, function_name}} <- Application.fetch_env(:hook, :strategy_callback),
-         true <- Code.ensure_loaded?(module),
-         true <- function_exported?(module, function_name, 1) do
-      case apply(module, function_name, [term]) do
-        :runtime ->
-          quote do
-            Hook.get(unquote(term), unquote(term))
-          end
+    resolve_at = Application.fetch_env!(:hook, :resolve_at)
+    mix_env_allowlist = Application.fetch_env!(:hook, :mix_env_allowlist)
+    top_level_module_allowlist = Application.fetch_env!(:hook, :top_level_module_allowlist)
+    mappings = Application.fetch_env!(:hook, :mappings)
+    valid_env = Mix.env() in mix_env_allowlist
 
-        :compile_time ->
-          quote do
-            unquote(term)
-          end
+    caller_top_level_module =
+      __CALLER__.module
+      |> Module.split()
+      |> hd()
+      |> List.wrap()
+      |> Module.concat()
 
-        {:compile_time, mappings} ->
-          expanded = Macro.expand(term, __CALLER__)
+    valid_caller_module = caller_top_level_module in top_level_module_allowlist
 
-          if not Macro.quoted_literal?(expanded) do
-            raise("When the hook strategy is :compile_time, hooked terms must be literals.")
-          end
-
-          value =
-            case List.keyfind(mappings, expanded, 0) do
-              mapping when tuple_size(mapping) >= 2 -> elem(mapping, 1)
-              _ -> expanded
+    case valid_env and valid_caller_module do
+      true ->
+        case resolve_at do
+          :run_time ->
+            quote do
+              Hook.get(unquote(term), unquote(term))
             end
 
-          quote do
-            unquote(value)
-          end
-      end
-    else
-      _ ->
+          :compile_time ->
+            expanded = Macro.expand(term, __CALLER__)
+
+            if not Macro.quoted_literal?(expanded) do
+              raise("When the hook strategy is :compile_time, hooked terms must be literals.")
+            end
+
+            value =
+              case List.keyfind(mappings, expanded, 0) do
+                mapping when tuple_size(mapping) >= 2 -> elem(mapping, 1)
+                _ -> expanded
+              end
+
+            quote do
+              unquote(value)
+            end
+        end
+
+      false ->
         quote do
           unquote(term)
         end
