@@ -2,15 +2,33 @@ defmodule Hook do
   @moduledoc """
   An interface to define and leverage runtime resolution.
 
-  # Compile-time Configuration
+  In various module and function docs it is common to document options like so:
 
-  ```
-  config :hook,
-    resolve_at: :compile_time,
-    mappings: [{key, value}],
-    mix_env_allowlist: [:dev, :test],
-    top_level_module_allowlist: [SomeModule]
-  ```
+  > # Options
+  >
+  > - `:option1_name` - `type`. # since no default is specified, this option is required
+  > - `:option2_name` - `type`. Descriptive text. # since no default is specified, this option is required
+  > - `:option3_name` - `type`. `default`. # since a default is specified, this option is not required
+  > - `:option4_name` - `type`. `default`. Descriptive text. # since a default is specified, this option is not required
+
+  # Compile time Configuration
+
+  These options can be set compile time to configure how `m:Hook.hook/1` behaves. `m:Hook.hook/1`
+  will be referred to as "the macro".
+
+  - `mappings` - `keyword()`. Mappings that the macro will resolve against.
+  - `resolve_at` - `:compile_time | :run_time | :never`. When `:compile_time` or `:run_time`, the
+    macro will resolve its term at the respective time. When `:never`, the macro will compile
+    directly into its term with no attempt to resolve against mappings.
+  - `top_level_module_allowlist` - `[module()]`. When the macro's calling module's
+    top-level-module is in this list, the `:resolve_at` option will be respected. Otherwise, it
+    will behave as if `resolve_at: :never` for that instance of the macro. This allows developers
+    to control whether or not individual instances of the macro should ever attempt resolution or
+    not with a top-level-module granularity. The common value for this option is the top level
+    module of your application so that any instance of the macro throughout your application's
+    code will respect the `:resolve_at` option, and any instance of the macro outside your
+    application's code will behave as if `resolve_at: :never`. An example of "code outside your
+    application" is if any of your application's dependencies happen to also use the macro.
 
   # Groups
 
@@ -102,14 +120,13 @@ defmodule Hook do
   @doc """
   A macro that compiles into `term` itself or a `Hook.fetch(term)` call.
 
-  Check the "Init configuration" section for information about configuring this functionality.
+  Check the "Compile time Configuration" section for information about configuring this
+  functionality.
   """
   defmacro hook(term) do
     resolve_at = Application.fetch_env!(:hook, :resolve_at)
-    mix_env_allowlist = Application.fetch_env!(:hook, :mix_env_allowlist)
     top_level_module_allowlist = Application.fetch_env!(:hook, :top_level_module_allowlist)
     mappings = Application.fetch_env!(:hook, :mappings)
-    valid_env = Mix.env() in mix_env_allowlist
 
     caller_top_level_module =
       __CALLER__.module
@@ -120,8 +137,8 @@ defmodule Hook do
 
     valid_caller_module = caller_top_level_module in top_level_module_allowlist
 
-    case valid_env and valid_caller_module do
-      true ->
+    cond do
+      valid_caller_module ->
         case resolve_at do
           :run_time ->
             quote do
@@ -144,9 +161,14 @@ defmodule Hook do
             quote do
               unquote(value)
             end
+
+          :never ->
+            quote do
+              unquote(term)
+            end
         end
 
-      false ->
+      true ->
         quote do
           unquote(term)
         end
