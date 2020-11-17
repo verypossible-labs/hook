@@ -32,7 +32,11 @@ defmodule Hook.Server do
             __fetch__(ancestors, match_fun)
 
           :error ->
-            :error
+            if group == :global do
+              :error
+            else
+              __fetch__([:global], match_fun)
+            end
         end
 
       {:error, groups} ->
@@ -78,6 +82,8 @@ defmodule Hook.Server do
   end
 
   @impl Hook
+  def fallback(:global, _), do: {:error, {:invalid_group, :source}}
+
   def fallback(src, dest), do: GenServer.call(__MODULE__, {:fallback, {src, dest}})
 
   @impl Hook
