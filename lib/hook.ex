@@ -101,7 +101,8 @@ defmodule Hook do
   @callback assert(group()) :: :ok
   @callback callback(module(), function_name :: atom(), fun(), callback_opts()) :: :ok
   @callback callbacks(group()) :: %{resolved: [], unresolved: [{count(), pid(), function()}]}
-  @callback fallback(dest :: group(), src :: group()) :: :ok
+  @callback fallback(dest :: group(), src :: group()) ::
+              :ok | {:error, {:invalid_group, :destination | :source}}
   @callback fetch!(any(), group()) :: any()
   @callback fetch(key(), group()) :: {:ok, any()} | :error
   @callback get(key(), default :: any(), group()) :: {:ok, any()} | :error
@@ -209,6 +210,8 @@ defmodule Hook do
 
   @doc """
   Prepend `group` to the calling process' fallbacks.
+
+  **NOTE:** `:global` cannot be used as a `src_group`.
   """
   defdelegate fallback(src_group \\ self(), dest_group), to: Server
 
