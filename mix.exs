@@ -19,7 +19,7 @@ defmodule Hook.MixProject do
       package: package(),
       preferred_cli_env: [check: :test],
       start_permanent: Mix.env() == :prod,
-      version: "0.3.0"
+      version: "0.4.0"
     ]
   end
 
