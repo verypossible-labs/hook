@@ -88,6 +88,10 @@ defmodule Hook do
 
   alias Hook.Server
 
+  @resolve_at Application.compile_env!(:hook, :resolve_at)
+  @top_level_module_allowlist Application.compile_env!(:hook, :top_level_module_allowlist)
+  @mappings Application.compile_env!(:hook, :mappings)
+
   @type callback_opt() :: {:group, group()} | {:count, count()}
   @type callback_opts() :: [callback_opt()]
   @type config() :: %{hook?: boolean() | (any() -> boolean())}
@@ -125,10 +129,6 @@ defmodule Hook do
   functionality.
   """
   defmacro hook(term) do
-    resolve_at = Application.fetch_env!(:hook, :resolve_at)
-    top_level_module_allowlist = Application.fetch_env!(:hook, :top_level_module_allowlist)
-    mappings = Application.fetch_env!(:hook, :mappings)
-
     caller_top_level_module =
       __CALLER__.module
       |> Module.split()
@@ -136,11 +136,11 @@ defmodule Hook do
       |> List.wrap()
       |> Module.concat()
 
-    valid_caller_module = caller_top_level_module in top_level_module_allowlist
+    valid_caller_module = caller_top_level_module in @top_level_module_allowlist
 
     cond do
       valid_caller_module ->
-        case resolve_at do
+        case @resolve_at do
           :run_time ->
             quote do
               Hook.get(unquote(term), unquote(term))
@@ -154,7 +154,7 @@ defmodule Hook do
             end
 
             value =
-              case List.keyfind(mappings, expanded, 0) do
+              case List.keyfind(@mappings, expanded, 0) do
                 mapping when tuple_size(mapping) >= 2 -> elem(mapping, 1)
                 _ -> expanded
               end
