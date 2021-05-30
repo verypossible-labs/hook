@@ -4,7 +4,8 @@ defmodule HookTest do
   doctest Hook
 
   setup do
-    on_exit(fn -> Hook.Server.__delete__() end)
+    {:ok, _pid} = Hook.Server.start_link([])
+    :ok
   end
 
   describe "put/3 and fetch/2" do

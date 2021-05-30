@@ -6,6 +6,19 @@ defmodule Hook.Server do
 
   @behaviour Hook
 
+  @doc """
+  Start a GenServer.
+
+  ## Options
+
+  - `mappings`. `t:Hook.mappings()`. A list of mappings to define on initialization.
+  """
+  @spec start_link(mappings: Hook.mappings()) :: GenServer.on_start()
+  def start_link(opts) do
+    opts = Keyword.put(opts, :parent, self())
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
   def __delete__ do
     GenServer.call(__MODULE__, :delete)
   end
@@ -201,19 +214,6 @@ defmodule Hook.Server do
         {function_name, arity} = fun_key
         Callbacks.raise_callback_refuted(module, {function_name, arity}, self())
     end
-  end
-
-  @doc """
-  Start a GenServer.
-
-  ## Options
-
-  - `mappings`. `t:Hook.mappings()`. A list of mappings to define on initialization.
-  """
-  @spec start_link(mappings: Hook.mappings()) :: GenServer.on_start()
-  def start_link(opts) do
-    opts = Keyword.put(opts, :parent, self())
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   defp do_fallback({src, dest}) do
