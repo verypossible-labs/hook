@@ -149,10 +149,6 @@ defmodule Hook do
           :compile_time ->
             expanded = Macro.expand(term, __CALLER__)
 
-            if not Macro.quoted_literal?(expanded) do
-              raise("When the hook strategy is :compile_time, hooked terms must be literals.")
-            end
-
             value =
               case List.keyfind(@mappings, expanded, 0) do
                 mapping when tuple_size(mapping) >= 2 -> elem(mapping, 1)
